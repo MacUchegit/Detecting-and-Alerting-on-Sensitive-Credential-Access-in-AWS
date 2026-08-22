@@ -572,26 +572,7 @@ SNS does not begin sending notifications to an email endpoint until the recipien
 
 This prevents AWS users from arbitrarily subscribing unrelated email addresses to notification topics.
 
-### Screenshot Evidence
-
-Capture the SNS subscription page showing:
-
-```text
-Protocol: Email
-Status: Confirmed
-```
-
-Redact most of the email address before publishing.
-
-Example:
-
-```text
-he***@example.com
-```
-
-### Figure 7 — Security Alert Channel
-
-**Caption:**
+<img width="1359" height="619" alt="image" src="https://github.com/user-attachments/assets/3bcbdcea-ff31-47c5-a897-c26534b57dc2" />
 
 *Figure 7: Confirmed Amazon SNS email subscription for the `sanifeo-security-alerts` topic. This topic acts as the notification channel for detected credential access.*
 
@@ -767,15 +748,11 @@ Capture the EventBridge rule page showing:
 
 If one screenshot cannot show everything clearly, use two images:
 
-### Figure 8A — Event Pattern
-
-**Caption:**
+<img width="1165" height="679" alt="image" src="https://github.com/user-attachments/assets/4e0dacb2-9728-482d-a447-f42ad6944ff7" />
 
 *Figure 8A: EventBridge event pattern configured to detect every AWS Secrets Manager `GetSecretValue` API activity recorded through CloudTrail.*
 
-### Figure 8B — Detection Target
-
-**Caption:**
+<img width="1513" height="588" alt="image" src="https://github.com/user-attachments/assets/aa989f4c-367f-462f-ad7c-1ff3afa17dea" />
 
 *Figure 8B: Amazon SNS configured as the target of the Sanifeo EventBridge security rule, completing the event-driven notification path.*
 
@@ -801,6 +778,8 @@ aws secretsmanager get-secret-value ^
 This represented the security event Sanifeo wanted to detect.
 
 Only **one retrieval** was necessary.
+
+<img width="1374" height="99" alt="image" src="https://github.com/user-attachments/assets/dc31fdd3-ab3f-486f-9d65-7217539d34ea" />
 
 I did not need to repeatedly retrieve the credential because the control was explicitly designed to alert on every individual access.
 
