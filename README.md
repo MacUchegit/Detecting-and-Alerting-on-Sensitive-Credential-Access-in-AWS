@@ -24,8 +24,8 @@ I designed and implemented a lightweight security monitoring solution that:
 
 1. Stores a dummy production credential in AWS Secrets Manager.
 2. Records access activity using AWS CloudTrail.
-3. Detects `GetSecretValue` API calls using Amazon EventBridge.
-4. Sends security alerts through Amazon SNS.
+3. Detects every `GetSecretValue` API call using Amazon EventBridge.
+4. Sends a security alert through Amazon SNS every time the protected secret is accessed.
 5. Allows the security team to investigate the identity, source, time, and nature of the access.
 6. Validates the solution through a controlled credential-access simulation.
 7. Removes the temporary resources after testing.
@@ -48,7 +48,9 @@ A compromised administrator account, overly privileged developer, or unexpected 
 
 I translated the problem into the following requirement:
 
-> **Generate a security notification whenever the protected Sanifeo credential is retrieved and retain enough audit information to identify who accessed it, when the access occurred, and where the request originated.**
+> **Generate a security notification every time the protected Sanifeo credential is retrieved and retain enough audit information to identify who accessed it, when the access occurred, and where the request originated.**
+
+Because this credential represents sensitive information, there is **no minimum access threshold**. A single retrieval is enough to trigger a security notification.
 
 The objective was **detection and visibility**, not automatic remediation.
 
@@ -60,8 +62,8 @@ By the end of the project, I wanted to prove that:
 
 * the credential could be stored securely;
 * credential retrieval generated an auditable AWS event;
-* the specific API operation could be detected automatically;
-* the Cloud Security team could receive an alert;
+* every occurrence of the specific API operation could be detected automatically;
+* the Cloud Security team could receive an alert whenever the credential was accessed;
 * the initiating AWS identity could be investigated;
 * the architecture remained simple enough to operate and understand;
 * temporary laboratory resources could be completely cleaned up.
@@ -116,7 +118,8 @@ By the end of the project, I wanted to prove that:
 ### Figure 1 — Solution Architecture
 
 **Caption:**
-*Figure 1: Sanifeo sensitive credential monitoring architecture. AWS CloudTrail records retrieval of the protected credential, EventBridge detects the `GetSecretValue` API operation, and Amazon SNS delivers a security notification.*
+
+*Figure 1: Sanifeo sensitive credential monitoring architecture. AWS CloudTrail records retrieval of the protected credential, EventBridge detects every `GetSecretValue` API operation, and Amazon SNS delivers a security notification whenever the secret is accessed.*
 
 ---
 
@@ -126,21 +129,27 @@ By the end of the project, I wanted to prove that:
 | ------------------- | -------------------------------------------------------- |
 | AWS Secrets Manager | Securely stores the dummy Sanifeo application credential |
 | AWS CloudTrail      | Records API activity associated with the credential      |
-| Amazon EventBridge  | Detects the security-relevant `GetSecretValue` event     |
+| Amazon EventBridge  | Detects every security-relevant `GetSecretValue` event   |
 | Amazon SNS          | Sends the resulting security notification by email       |
 | Amazon S3           | Stores CloudTrail trail logs                             |
 
 I intentionally avoided adding unnecessary services.
 
-For example, CloudWatch metrics and alarms would be useful if Sanifeo wanted to detect something such as:
+Because the credential represents sensitive production information, I did not want the system to wait for multiple retrievals or a time-based threshold before notifying the security team.
 
-> More than 10 secret retrievals within five minutes.
+The security requirement was:
 
-My requirement was simpler:
+> **Notify security whenever this specific security-sensitive API operation occurs, including the first retrieval.**
 
-> Notify security when this specific security-sensitive API operation occurs.
+The detection model is therefore:
 
-For that reason, an EventBridge event rule provided a simpler event-driven architecture.
+```text
+1 GetSecretValue event
+        =
+1 Security Alert
+```
+
+For that reason, an EventBridge event rule provided a simple event-driven architecture.
 
 ---
 
@@ -168,6 +177,8 @@ The secret value itself is not written into the CloudTrail log.
 
 This allowed me to monitor access without exposing the sensitive credential inside the audit record.
 
+Because the credential is considered sensitive, **every occurrence of `GetSecretValue` should generate an alert**.
+
 ---
 
 # Implementation
@@ -179,10 +190,16 @@ Before creating any resources, I first verified which AWS identity and account m
 I ran:
 
 ```bash
-aws sts get-caller-identity --profile finsecure-lab
+aws sts get-caller-identity --profile sanifeo-fin-user
 ```
 
 This returned information about the authenticated AWS principal and account.
+
+The IAM user used for this Sanifeo environment was:
+
+```text
+sanifeo-fin-user
+```
 
 I also confirmed that I would perform the project consistently in:
 
@@ -207,13 +224,19 @@ Verifying these values before deployment gave me a known baseline.
 
 **Figure 2 — Verified AWS CLI Identity**
 
-Capture the terminal after running `aws sts get-caller-identity`.
+Capture the terminal after running:
+
+```bash
+aws sts get-caller-identity --profile sanifeo-fin-user
+```
+
+The output should show the authenticated Sanifeo IAM identity.
 
 Redact the majority of your AWS account ID before publishing.
 
-**Caption:**
+### Caption
 
-*Figure 2: Verification of the AWS identity used for the Sanifeo security monitoring lab. I confirmed the active account and IAM principal before deploying any resources.*
+*Figure 2: Verification of the `sanifeo-fin-user` AWS identity used for the Sanifeo security monitoring project. I confirmed the active account and IAM principal before deploying any resources.*
 
 ---
 
@@ -380,7 +403,7 @@ To avoid displaying the actual value in my terminal, I queried only the secret n
 aws secretsmanager get-secret-value ^
   --secret-id sanifeo/prod/payment-api ^
   --region eu-west-2 ^
-  --profile finsecure-lab ^
+  --profile sanifeo-fin-user ^
   --query Name ^
   --output text
 ```
@@ -405,6 +428,8 @@ API request.
 
 This gave me a controlled security event without exposing the dummy credential in my screenshots.
 
+Because the monitoring requirement applies to **every secret retrieval**, this single API request represented exactly the type of activity that should ultimately generate a security alert once the full detection pipeline was configured.
+
 ### Screenshot Evidence
 
 Capture:
@@ -417,7 +442,7 @@ Capture:
 
 **Caption:**
 
-*Figure 5: Controlled `GetSecretValue` request generated through the AWS CLI. The CLI output was restricted to the secret name so that no credential value was exposed in portfolio evidence.*
+*Figure 5: Controlled `GetSecretValue` request generated through the AWS CLI using `sanifeo-fin-user`. The CLI output was restricted to the secret name so that no credential value was exposed in portfolio evidence.*
 
 ---
 
@@ -461,6 +486,12 @@ The event allowed me to answer several investigation questions.
 ### Who?
 
 The `userIdentity` field showed which AWS identity initiated the request.
+
+In my controlled test, this was associated with:
+
+```text
+sanifeo-fin-user
+```
 
 ### What?
 
@@ -608,6 +639,18 @@ AWS Secrets Manager
 GetSecretValue API call
 ```
 
+Importantly, I did **not** configure a threshold such as a certain number of secret retrievals within five minutes.
+
+The credential is considered sensitive.
+
+Therefore:
+
+```text
+ANY GetSecretValue event
+        ↓
+Security alert
+```
+
 I opened:
 
 **Amazon EventBridge → Rules → Create rule**
@@ -678,8 +721,14 @@ API operation = GetSecretValue
 
 THEN
 
-the rule matches.
+the rule matches immediately.
 ```
+
+There was no count threshold.
+
+There was no five-minute waiting period.
+
+Each matching `GetSecretValue` event represented a security-relevant access event.
 
 For this controlled training account, the rule monitored `GetSecretValue` activity.
 
@@ -727,6 +776,14 @@ SNS
 Security email
 ```
 
+The alerting principle was:
+
+```text
+1 sensitive secret retrieval
+            ↓
+      1 security alert
+```
+
 ### Screenshot Evidence
 
 Capture the EventBridge rule page showing:
@@ -738,13 +795,13 @@ Capture the EventBridge rule page showing:
 
 If one screenshot cannot show everything clearly, use two images:
 
-**Figure 8A — Event pattern**
+### Figure 8A — Event Pattern
 
 **Caption:**
 
-*Figure 8A: EventBridge event pattern configured to detect AWS Secrets Manager `GetSecretValue` API activity recorded through CloudTrail.*
+*Figure 8A: EventBridge event pattern configured to detect every AWS Secrets Manager `GetSecretValue` API activity recorded through CloudTrail.*
 
-**Figure 8B — Detection target**
+### Figure 8B — Detection Target
 
 **Caption:**
 
@@ -764,12 +821,16 @@ I performed another controlled credential retrieval using the AWS CLI:
 aws secretsmanager get-secret-value ^
   --secret-id sanifeo/prod/payment-api ^
   --region eu-west-2 ^
-  --profile finsecure-lab ^
+  --profile sanifeo-fin-user ^
   --query Name ^
   --output text
 ```
 
 This represented the security event Sanifeo wanted to detect.
+
+Only **one retrieval** was necessary.
+
+I did not need to repeatedly retrieve the credential because the control was explicitly designed to alert on every individual access.
 
 Conceptually:
 
@@ -799,6 +860,24 @@ The notification confirmed that the event had successfully travelled through the
 
 This demonstrated that the detection was operational rather than simply configured.
 
+The expected behavior was:
+
+```text
+First retrieval
+      ↓
+Alert
+
+Second retrieval
+      ↓
+Alert
+
+Third retrieval
+      ↓
+Alert
+```
+
+Every access to the protected sensitive credential should result in a corresponding security notification.
+
 ### Screenshot Evidence
 
 Capture the alert email.
@@ -824,7 +903,7 @@ EventBridge/SNS notification
 
 **Caption:**
 
-*Figure 9: Security notification generated after the controlled retrieval of the Sanifeo payment credential. This validated the complete CloudTrail → EventBridge → SNS detection pipeline.*
+*Figure 9: Security notification generated after a single controlled retrieval of the Sanifeo payment credential. This validated that every `GetSecretValue` event can trigger the CloudTrail → EventBridge → SNS detection pipeline without waiting for an access threshold.*
 
 ---
 
@@ -873,6 +952,12 @@ userIdentity
 ```
 
 to determine the AWS identity involved.
+
+For my controlled test, the request was associated with the Sanifeo IAM identity:
+
+```text
+sanifeo-fin-user
+```
 
 ### 4. When did it happen?
 
@@ -925,6 +1010,10 @@ Unexpected retrieval of a sensitive Sanifeo application credential.
 
 Amazon EventBridge matched a CloudTrail `GetSecretValue` event and delivered an alert through Amazon SNS.
 
+The alert did not depend on repeated activity.
+
+A single credential retrieval was sufficient to activate the detection.
+
 ## Asset
 
 ```text
@@ -949,9 +1038,9 @@ requestParameters
 
 ## Test Conclusion
 
-The event was generated intentionally as part of a controlled validation exercise.
+The event was generated intentionally as part of a controlled validation exercise by the `sanifeo-fin-user` AWS identity.
 
-The monitoring system successfully detected the action and generated the expected security notification.
+The monitoring system successfully detected the individual access event and generated the expected security notification.
 
 ### Screenshot Evidence
 
@@ -975,6 +1064,7 @@ The solution provides:
 
 * audit visibility;
 * event-driven detection;
+* notification on every sensitive credential retrieval;
 * email notification;
 * identity attribution;
 * source information;
@@ -1034,17 +1124,37 @@ CloudWatch Alarm
 SNS
 ```
 
-That design can be useful.
+That architecture can be useful when a security requirement depends on aggregating activity, calculating a metric, or evaluating a threshold.
 
-For example:
+That was **not** Sanifeo's requirement.
 
-> Alert if `GetSecretValue` occurs more than 10 times within five minutes.
+The protected credential contains sensitive information.
 
-That is a metric/threshold problem.
+I did not want the security team to wait for repeated retrievals before receiving an alert.
 
-My requirement was:
+The requirement was:
 
-> Detect a specific security API event when it occurs.
+> **Detect and alert on every `GetSecretValue` event as soon as the protected credential is accessed.**
+
+The appropriate logic was therefore:
+
+```text
+GetSecretValue
+     ↓
+CloudTrail
+     ↓
+EventBridge
+     ↓
+SNS
+     ↓
+Security Alert
+```
+
+with:
+
+```text
+1 access = 1 alert
+```
 
 EventBridge was therefore sufficient:
 
@@ -1077,7 +1187,8 @@ I verified:
 * the correct AWS Region;
 * that I was filtering for `GetSecretValue`;
 * the event source was `secretsmanager.amazonaws.com`;
-* the API request had actually been performed.
+* the API request had actually been performed;
+* I had executed the request using the intended `sanifeo-fin-user` profile.
 
 ---
 
@@ -1090,6 +1201,8 @@ I checked:
 * CloudTrail was actively logging the required management events;
 * `eventSource` was correct;
 * `eventName` exactly matched `GetSecretValue`.
+
+No numerical threshold needed to be configured because **every matching event should trigger the rule**.
 
 If additional filtering by secret ID is used, the value must match what appears in the actual CloudTrail event.
 
@@ -1135,15 +1248,29 @@ The project demonstrated several important cloud-security principles.
 
 Secrets Manager protects credential storage, but organizations also need visibility into credential usage.
 
+Because the protected credential is sensitive, even one retrieval can warrant security awareness.
+
 ### Finding 2 — AWS API Activity Provides Strong Investigation Evidence
 
 CloudTrail allowed me to attribute activity to an AWS identity and examine contextual information surrounding the request.
 
 ### Finding 3 — Event-Driven Detection Can Remain Simple
 
-EventBridge allowed me to detect the relevant API operation without creating a larger monitoring stack than the requirement justified.
+EventBridge allowed me to detect every relevant API operation without creating a larger monitoring stack than the requirement justified.
 
-### Finding 4 — Alerts Must Be Tested
+### Finding 4 — Sensitive Access Should Be Visible Immediately
+
+The solution was deliberately designed so that:
+
+```text
+First secret retrieval
+        ↓
+Security notification
+```
+
+The security team does not need to wait for repeated retrievals before gaining visibility.
+
+### Finding 5 — Alerts Must Be Tested
 
 A configured rule is not proof that a monitoring system works.
 
@@ -1158,7 +1285,7 @@ event
 
 was operational.
 
-### Finding 5 — Detection Does Not Replace Least Privilege
+### Finding 6 — Detection Does Not Replace Least Privilege
 
 The strongest solution would prevent unnecessary users from retrieving the production secret in the first place and then monitor the identities that legitimately retain access.
 
@@ -1209,7 +1336,7 @@ aws secretsmanager delete-secret ^
   --secret-id sanifeo/prod/payment-api ^
   --force-delete-without-recovery ^
   --region eu-west-2 ^
-  --profile finsecure-lab
+  --profile sanifeo-fin-user
 ```
 
 **I would not use `--force-delete-without-recovery` casually against a real production secret.**
@@ -1271,9 +1398,17 @@ Auditable access
         ↓
 Automated detection
         ↓
-Security notification
+Immediate security notification
         ↓
 Investigation evidence
+```
+
+The core alerting requirement was successfully validated:
+
+```text
+Every GetSecretValue event
+          ↓
+Security Alert
 ```
 
 The project addressed the original security gap without introducing unnecessary architectural complexity.
@@ -1299,6 +1434,7 @@ Through this project, I gained practical experience with:
 * audit logging;
 * secrets management;
 * event-driven detection;
+* immediate sensitive-access alerting;
 * incident triage;
 * detective controls;
 * least-privilege concepts;
@@ -1334,6 +1470,10 @@ For a real Sanifeo production environment, I would extend the control by:
 
 These would be incremental improvements rather than requirements for proving the core monitoring concept.
 
+The fundamental monitoring requirement would remain unchanged:
+
+> **Every access to the sensitive credential should remain visible to the security team.**
+
 ---
 
 # Key Takeaway
@@ -1352,9 +1492,19 @@ WHERE
 HOW
 ```
 
+For a sensitive credential, even the first access may be important.
+
+Therefore, the detection model should not depend on repeated retrievals:
+
+```text
+Secret accessed once
+        ↓
+Alert generated
+```
+
 AWS CloudTrail supplied the audit evidence.
 
-Amazon EventBridge turned that evidence into a detection.
+Amazon EventBridge turned each relevant event into a detection.
 
 Amazon SNS turned the detection into an actionable notification.
 
@@ -1368,11 +1518,13 @@ If I were asked about this project during an interview, I would explain it as fo
 
 > “I completed a cloud-security project based on a fictional e-commerce company called Sanifeo. The business problem was that a sensitive application credential was stored in AWS Secrets Manager, but the security team had no immediate visibility when someone retrieved it.
 >
-> I first verified that the `GetSecretValue` API operation was captured in CloudTrail and used the event to understand what investigation information was available, including the initiating identity, timestamp, source IP and Region.
+> I first verified that the `GetSecretValue` API operation was captured in CloudTrail and used the event to understand what investigation information was available, including the initiating identity, timestamp, source IP and Region. I performed the controlled tests using the `sanifeo-fin-user` IAM identity.
 >
-> I then created an EventBridge rule to detect the `GetSecretValue` activity and configured an SNS topic to notify the security team. I simulated credential retrieval through the AWS CLI, confirmed that the alert was delivered, and investigated the resulting CloudTrail event.
+> I then created an EventBridge rule to detect every `GetSecretValue` activity and configured an SNS topic to notify the security team. Because the credential was considered sensitive, I deliberately did not use a numerical threshold or wait for repeated access. One retrieval was sufficient to generate an alert.
 >
-> One design choice I made was not to add CloudWatch metrics and alarms because the requirement was to detect a discrete API event rather than a threshold. If the requirement changed to detecting repeated access—for example, ten secret retrievals in five minutes—I would consider CloudWatch metrics and alarms.
+> I simulated a single credential retrieval through the AWS CLI, confirmed that the alert was delivered, and investigated the resulting CloudTrail event.
+>
+> One design choice I made was not to add CloudWatch metrics and alarms because the security requirement was event-based rather than threshold-based. I needed every individual retrieval to generate security visibility, so EventBridge provided a simpler architecture for matching each `GetSecretValue` event directly.
 >
 > Finally, I documented the residual risk that monitoring is a detective control rather than a preventive one, recommended least-privilege restrictions for production, and removed all temporary lab resources.”
 
@@ -1383,7 +1535,7 @@ If I were asked about this project during an interview, I would explain it as fo
 My final portfolio evidence consists of:
 
 **Figure 1** — Sanifeo monitoring architecture
-**Figure 2** — Verified AWS CLI identity
+**Figure 2** — Verified `sanifeo-fin-user` AWS CLI identity
 **Figure 3** — Protected Sanifeo Secrets Manager credential
 **Figure 4** — Active CloudTrail audit trail
 **Figure 5** — Controlled `GetSecretValue` simulation
@@ -1391,7 +1543,7 @@ My final portfolio evidence consists of:
 **Figure 7** — Confirmed SNS security subscription
 **Figure 8A** — EventBridge detection pattern
 **Figure 8B** — EventBridge SNS target
-**Figure 9** — Successful security alert email
+**Figure 9** — Successful security alert email from a single retrieval
 **Figure 10** — CloudTrail incident investigation
 
 This evidence demonstrates the complete journey from identifying the security problem through implementation, testing, investigation, and cleanup.
