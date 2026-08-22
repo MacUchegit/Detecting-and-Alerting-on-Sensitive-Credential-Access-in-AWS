@@ -693,16 +693,6 @@ The alerting principle was:
       1 security alert
 ```
 
-### Screenshot Evidence
-
-Capture the EventBridge rule page showing:
-
-* rule name;
-* enabled status;
-* event pattern;
-* SNS target.
-
-If one screenshot cannot show everything clearly, use two images:
 
 <img width="1165" height="679" alt="image" src="https://github.com/user-attachments/assets/4e0dacb2-9728-482d-a447-f42ad6944ff7" />
 
@@ -741,25 +731,8 @@ I did not need to repeatedly retrieve the credential because the control was exp
 
 Conceptually:
 
-```text
-Employee / Workload
-        │
-        │ GetSecretValue
-        ▼
-Secrets Manager
-        │
-        ▼
-CloudTrail
-        │
-        ▼
-EventBridge
-        │
-        ▼
-SNS
-        │
-        ▼
-Security Team
-```
+<img width="1902" height="658" alt="image2" src="https://github.com/user-attachments/assets/e1ad2298-2edb-4a1e-bf75-664d13e23679" />
+
 
 During the first end-to-end test, however, the SNS email did **not** arrive.
 
@@ -793,26 +766,6 @@ Alert
 
 Every access to the protected sensitive credential should result in a corresponding security notification.
 
-### Screenshot Evidence
-
-Capture the alert email.
-
-Before publishing, redact:
-
-* recipient email;
-* account ID;
-* full ARN;
-* public IP address if present;
-* other identifying information.
-
-Leave visible enough information to demonstrate:
-
-```text
-GetSecretValue
-secretsmanager.amazonaws.com
-AWS
-EventBridge/SNS notification
-```
 
 <img width="1555" height="587" alt="image" src="https://github.com/user-attachments/assets/3f3a92fb-1b91-4567-a0bc-bf39d04783e3" />
 
