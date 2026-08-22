@@ -238,17 +238,6 @@ Secrets Manager provides a central location for protecting application secrets r
 
 The important security question for this project, however, was what happened **after someone retrieved that secret**.
 
-### Screenshot Evidence
-
-Do **not** publish a screenshot showing the secret value.
-
-Capture the secret's overview page showing:
-
-* secret name;
-* description;
-* encryption configuration;
-* Region.
-
 <img width="1633" height="419" alt="image" src="https://github.com/user-attachments/assets/3c140920-13f7-41da-8fa3-16852cd19803" />
 
 *Figure 3: Dummy Sanifeo payment credential stored in AWS Secrets Manager. Only metadata is shown; the secret value was intentionally excluded from portfolio evidence.*
@@ -358,13 +347,6 @@ This gave me a controlled security event without exposing the dummy credential i
 
 Because the monitoring requirement applies to **every secret retrieval**, this single API request represented exactly the type of activity that should ultimately generate a security alert once the full detection pipeline was configured.
 
-### Screenshot Evidence
-
-Capture:
-
-* the AWS CLI command;
-* the returned secret name;
-* no secret value.
 
 <img width="1381" height="135" alt="image" src="https://github.com/user-attachments/assets/f563997f-7093-438f-a6c4-04a760708510" />
 
