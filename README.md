@@ -72,7 +72,7 @@ By the end of the project, I wanted to prove that:
 
 # Architecture
 
-<img width="1448" height="1086" alt="image" src="https://github.com/user-attachments/assets/b8423065-4046-4851-a1c8-057d1c27a21e" />
+<img width="1693" height="929" alt="image" src="https://github.com/user-attachments/assets/fd359ad2-2cdb-4e2b-b9b6-8c7e7966c378" />
 
 *Figure 1: Sanifeo sensitive credential monitoring architecture. AWS CloudTrail records retrieval of the protected credential, EventBridge detects every **`GetSecretValue`** API operation, and Amazon SNS delivers a security notification whenever the secret is accessed.*
 
