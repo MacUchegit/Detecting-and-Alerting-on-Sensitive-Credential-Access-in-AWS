@@ -732,7 +732,7 @@ Alert
 Every access to the protected sensitive credential should result in a corresponding security notification.
 
 
-<img width="1555" height="587" alt="image" src="https://github.com/user-attachments/assets/3f3a92fb-1b91-4567-a0bc-bf39d04783e3" />
+<img width="1536" height="585" alt="image" src="https://github.com/user-attachments/assets/914be6e9-ffb4-416e-92a0-c2dd552c338e" />
 
 *Figure 9: Security notification generated after a single controlled retrieval of the Sanifeo payment credential. This validated that every **`GetSecretValue`** event can trigger the CloudTrail → EventBridge → SNS detection pipeline without waiting for an access threshold.*
 
